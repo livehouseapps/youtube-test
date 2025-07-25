@@ -3,86 +3,86 @@ import requests
 import os
 
 app = Flask(__name__)
-
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
-
-def build_query(keywords, logic):
-    words = [w.strip() for w in keywords if w.strip()]
-    if logic == 'and':
-        return " ".join(words)
-    elif logic == 'or':
-        return "|".join(words)
-    return ""
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
     videos = []
     if request.method == 'POST':
-        include_keywords = [request.form.get(f'include{i}', '') for i in range(3)]
-        exclude_keywords = [request.form.get(f'exclude{i}', '') for i in range(3)]
-        logic = request.form.get('logic', 'and')
-        min_views = int(request.form['min_views'] or 0)
-        max_views = int(request.form['max_views'] or 1e10)
-        published_after = request.form['published_after']
-        region_filter = request.form.get('region', '') == 'jp'
-        max_results = int(request.form['max_results'] or 25)
-        fetch_all = request.form.get('fetch_all', '') == 'true'
+        query = request.form.get('query') or ""
+        query2 = request.form.get('query2') or ""
+        query3 = request.form.get('query3') or ""
+        exclude = request.form.get('exclude') or ""
+        logic = request.form.get('logic') or "AND"
+        min_views = int(request.form.get('min_views') or 0)
+        max_views = int(request.form.get('max_views') or 10**12)
+        published_after = request.form.get('published_after') or "2024-01-01"
+        max_results = int(request.form.get('max_results') or 25)
+        only_jp = request.form.get('only_jp') == 'on'
 
-        query = build_query(include_keywords, logic)
-        if any(exclude_keywords):
-            query += " " + " ".join(f"-{word}" for word in exclude_keywords if word)
+        final_query = [query, query2, query3]
+        final_query = [q for q in final_query if q]
+        if logic == "AND":
+            search_query = " ".join(final_query)
+        else:
+            search_query = "|".join(final_query)
 
         url = "https://www.googleapis.com/youtube/v3/search"
-        videos_collected = 0
-        page_token = None
+        params = {
+            "key": YOUTUBE_API_KEY,
+            "q": search_query,
+            "part": "snippet",
+            "maxResults": min(50, max_results),  # maxResults上限50
+            "type": "video",
+            "order": "date",
+            "publishedAfter": published_after + "T00:00:00Z"
+        }
 
-        while True:
-            params = {
-                "key": YOUTUBE_API_KEY,
-                "q": query,
-                "part": "snippet",
-                "maxResults": min(50, max_results - videos_collected),
-                "type": "video",
-                "order": "date",
-                "publishedAfter": published_after + "T00:00:00Z" if published_after else "2024-01-01T00:00:00Z"
-            }
-            if region_filter:
-                params["regionCode"] = "JP"
-            if page_token:
-                params["pageToken"] = page_token
+        search_response = requests.get(url, params=params).json()
+        for item in search_response.get("items", []):
+            video_id = item["id"]["videoId"]
+            title = item["snippet"]["title"]
+            channel = item["snippet"]["channelTitle"]
+            publish_date = item["snippet"]["publishedAt"]
+            thumbnail = item["snippet"]["thumbnails"]["high"]["url"]
 
-            search_response = requests.get(url, params=params).json()
-            for item in search_response.get("items", []):
-                video_id = item["id"]["videoId"]
-                title = item["snippet"]["title"]
-                channel = item["snippet"]["channelTitle"]
-                publish_date = item["snippet"]["publishedAt"]
-                thumbnail = item["snippet"]["thumbnails"]["high"]["url"]
+            if exclude and exclude.lower() in title.lower():
+                continue
 
-                stats_url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id={video_id}&key={YOUTUBE_API_KEY}"
-                stats_response = requests.get(stats_url).json()
-                try:
-                    data = stats_response["items"][0]
-                    view_count = int(data["statistics"]["viewCount"])
-                    channel_desc = data["snippet"].get("channelTitle", "")
-                    if min_views <= view_count <= max_views:
-                        videos.append({
-                            "title": title,
-                            "channel": channel,
-                            "published": publish_date,
-                            "views": view_count,
-                            "url": f"https://www.youtube.com/watch?v={video_id}",
-                            "thumbnail": thumbnail,
-                            "desc": channel_desc
-                        })
-                        videos_collected += 1
-                except:
+            stats_url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id={video_id}&key={YOUTUBE_API_KEY}"
+            stats_response = requests.get(stats_url).json()
+            try:
+                video_data = stats_response["items"][0]
+                view_count = int(video_data["statistics"]["viewCount"])
+                description = video_data["snippet"]["description"]
+                channel_id = video_data["snippet"]["channelId"]
+
+                if not (min_views <= view_count <= max_views):
                     continue
 
-            page_token = search_response.get("nextPageToken")
-            if not fetch_all or not page_token or videos_collected >= max_results:
-                break
+                # チャンネル情報取得
+                channel_url = f"https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id={channel_id}&key={YOUTUBE_API_KEY}"
+                channel_response = requests.get(channel_url).json()
+                channel_data = channel_response["items"][0]
+                subscriber_count = channel_data["statistics"].get("subscriberCount", "非公開")
+                channel_description = channel_data["snippet"]["description"]
+                country = channel_data["snippet"].get("country", "")
 
+                if only_jp and country not in ["JP", ""]:
+                    continue
+
+                videos.append({
+                    "title": title,
+                    "channel": channel,
+                    "published": publish_date,
+                    "views": view_count,
+                    "url": f"https://www.youtube.com/watch?v={video_id}",
+                    "thumbnail": thumbnail,
+                    "channel_description": channel_description,
+                    "subscribers": subscriber_count
+                })
+            except:
+                continue
     return render_template("index.html", videos=videos)
 
 if __name__ == '__main__':

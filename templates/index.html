@@ -1,58 +1,50 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>YouTube動画検索</title>
+    <title>YouTube Search App</title>
     <style>
-        .video {
-            border: 1px solid #ccc;
-            padding: 10px;
-            margin-bottom: 15px;
-            display: flex;
-        }
-        img {
-            margin-right: 15px;
-            width: 240px;
-            height: auto;
-        }
-        .info {
-            max-width: 600px;
-        }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        form div { margin-bottom: 10px; }
+        .video { margin-bottom: 30px; display: flex; align-items: flex-start; }
+        .thumb { margin-right: 15px; }
+        .thumb img { width: 240px; height: auto; border-radius: 4px; }
+        .meta { max-width: 700px; }
+        label { display: inline-block; width: 160px; }
+        input[type="text"], input[type="number"], input[type="date"] { width: 300px; padding: 4px; }
     </style>
 </head>
 <body>
-    <h1>YouTube動画検索</h1>
+    <h1>YouTube 検索</h1>
     <form method="POST">
-        <input type="text" name="query" placeholder="検索ワード①"><br>
-        <input type="text" name="query2" placeholder="検索ワード②"><br>
-        <input type="text" name="query3" placeholder="検索ワード③"><br>
-        <select name="logic">
-            <option value="AND">AND検索</option>
-            <option value="OR">OR検索</option>
-        </select><br>
-        <input type="text" name="exclude" placeholder="除外ワード"><br>
-        <input type="number" name="min_views" placeholder="最小再生数"><br>
-        <input type="number" name="max_views" placeholder="最大再生数"><br>
-        <input type="date" name="published_after"><br>
-        <input type="number" name="max_results" placeholder="取得件数（最大50）"><br>
-        <label><input type="checkbox" name="only_jp"> 国内チャンネルのみ</label><br>
+        <div><label>検索ワード①:</label><input type="text" name="query1" value="{{ form.get('query1', '') if keep_input else '' }}"></div>
+        <div><label>検索ワード②:</label><input type="text" name="query2" value="{{ form.get('query2', '') if keep_input else '' }}"></div>
+        <div><label>検索ワード③:</label><input type="text" name="query3" value="{{ form.get('query3', '') if keep_input else '' }}"></div>
+        <div><label>除外ワード（空白区切り）:</label><input type="text" name="exclude" value="{{ form.get('exclude', '') if keep_input else '' }}"></div>
+        <div><label>最小再生数:</label><input type="number" name="min_views" value="{{ form.get('min_views', '') if keep_input else '' }}"></div>
+        <div><label>最大再生数:</label><input type="number" name="max_views" value="{{ form.get('max_views', '') if keep_input else '' }}"></div>
+        <div><label>公開日（以降）:</label><input type="date" name="published_after" value="{{ form.get('published_after', '') if keep_input else '' }}"></div>
+        <div><label>最大取得件数:</label><input type="number" name="max_results" value="{{ form.get('max_results', '50') if keep_input else '50' }}"></div>
+        <div>
+            <label><input type="checkbox" name="only_japanese" {% if form.get('only_japanese') == 'on' %}checked{% endif %}> 日本語タイトルのみ</label>
+        </div>
+        <div>
+            <label><input type="checkbox" name="keep_input" {% if keep_input %}checked{% endif %}> 入力内容を保持する</label>
+        </div>
         <button type="submit">検索</button>
-        <button type="submit" name="max_results" value="50">最大取得</button>
     </form>
 
-    <hr>
-    {% for video in videos %}
-        <div class="video">
-            <img src="{{ video.thumbnail }}" alt="サムネイル">
-            <div class="info">
-                <a href="{{ video.url }}" target="_blank"><strong>{{ video.title }}</strong></a><br>
-                チャンネル: {{ video.channel }}<br>
-                登録者数: {{ video.subscribers }}<br>
-                投稿日: {{ video.published }}<br>
-                再生数: {{ video.views }}<br>
-                <em>チャンネル説明: {{ video.channel_description }}</em>
-            </div>
+    <h2>検索結果</h2>
+    {% for v in videos %}
+    <div class="video">
+        <div class="thumb"><a href="{{ v.url }}" target="_blank"><img src="{{ v.thumbnail }}" alt="Thumbnail"></a></div>
+        <div class="meta">
+            <p><strong><a href="{{ v.url }}" target="_blank">{{ v.title }}</a></strong></p>
+            <p>チャンネル: {{ v.channel }}（登録者数: {{ v.subscribers | default(0) }})</p>
+            <p>再生数: {{ v.views }}</p>
+            <p>公開日: {{ v.published }}</p>
+            <p>プロフィール: {{ v.channel_description }}</p>
         </div>
+    </div>
     {% endfor %}
 </body>
 </html>

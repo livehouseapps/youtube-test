@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>YouTube検索ツール</title>
+    <style>
+        input[type=text], input[type=number], input[type=date] {
+            margin: 5px;
+        }
+        img {
+            width: 240px;
+        }
+        .video {
+            margin: 10px;
+            padding: 10px;
+            border: 1px solid #aaa;
+        }
+    </style>
+</head>
+<body>
+    <h1>YouTube検索ツール</h1>
+    <form method="POST">
+        <div>
+            <label>検索ワード (最大3つ):</label>
+            <input type="text" name="include0">
+            <input type="text" name="include1">
+            <input type="text" name="include2">
+        </div>
+        <div>
+            <label>除外ワード (最大3つ):</label>
+            <input type="text" name="exclude0">
+            <input type="text" name="exclude1">
+            <input type="text" name="exclude2">
+        </div>
+        <div>
+            <label>検索条件:</label>
+            <select name="logic">
+                <option value="and">AND検索</option>
+                <option value="or">OR検索</option>
+            </select>
+        </div>
+        <div>
+            <label>最低再生数:</label>
+            <input type="number" name="min_views">
+            <label>最大再生数:</label>
+            <input type="number" name="max_views">
+        </div>
+        <div>
+            <label>投稿日（以降）:</label>
+            <input type="date" name="published_after">
+        </div>
+        <div>
+            <label>最大取得件数:</label>
+            <input type="number" name="max_results" value="25">
+            <label>日本の動画のみ:</label>
+            <input type="checkbox" name="region" value="jp">
+            <label>最大取得モード:</label>
+            <input type="checkbox" name="fetch_all" value="true">
+        </div>
+        <input type="submit" value="検索">
+    </form>
+
+    <hr>
+    {% for video in videos %}
+    <div class="video">
+        <img src="{{ video.thumbnail }}"><br>
+        <a href="{{ video.url }}" target="_blank">{{ video.title }}</a><br>
+        チャンネル: {{ video.channel }}<br>
+        投稿日: {{ video.published }}<br>
+        再生数: {{ video.views }}<br>
+    </div>
+    {% endfor %}
+</body>
+</html>

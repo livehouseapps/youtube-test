@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>YouTube Search</title>
+</head>
+<body>
+    <h1>YouTube動画検索</h1>
+    <form method="post">
+        キーワード: <input type="text" name="query"><br>
+        最小再生数: <input type="number" name="min_views"><br>
+        投稿日（例: 2024-01-01）: <input type="text" name="published_after"><br>
+        <input type="submit" value="検索">
+    </form>
+
+    {% if videos %}
+        <h2>検索結果</h2>
+        <ul>
+            {% for video in videos %}
+                <li>
+                    <a href="{{ video.url }}" target="_blank">{{ video.title }}</a><br>
+                    チャンネル: {{ video.channel }}<br>
+                    投稿日: {{ video.published }}<br>
+                    再生数: {{ video.views }}
+                </li><br>
+            {% endfor %}
+        </ul>
+    {% endif %}
+</body>
+</html>

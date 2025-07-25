@@ -3,87 +3,117 @@ import requests
 import os
 
 app = Flask(__name__)
-
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
-
-def get_channel_details(channel_id):
-    url = "https://www.googleapis.com/youtube/v3/channels"
-    params = {
-        "key": YOUTUBE_API_KEY,
-        "id": channel_id,
-        "part": "snippet,statistics"
-    }
-    response = requests.get(url, params=params).json()
-    if "items" in response and len(response["items"]) > 0:
-        snippet = response["items"][0]["snippet"]
-        statistics = response["items"][0]["statistics"]
-        return {
-            "description": snippet.get("description", ""),
-            "subscribers": int(statistics.get("subscriberCount", 0))
-        }
-    return {"description": "", "subscribers": 0}
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
     videos = []
-    keep_input = True
+    query = ""
+    exclude_words = ["", "", ""]
+    min_views = 0
+    max_views = None
+    published_after = ""
+    max_results = 25
+    lang_filter = False
+    keep_inputs = False
+    sort_method = ""
+
     if request.method == 'POST':
-        query_list = [request.form.get(f'query{i}', '') for i in range(1, 4)]
-        exclude_words = request.form.get('exclude', '').split()
+        query = request.form.get('query', "")
+        exclude_words = [
+            request.form.get('exclude1', ""),
+            request.form.get('exclude2', ""),
+            request.form.get('exclude3', "")
+        ]
         min_views = int(request.form.get('min_views') or 0)
-        max_views = int(request.form.get('max_views') or 10**12)
-        published_after = request.form.get('published_after') or '2024-01-01'
-        max_results = int(request.form.get('max_results') or 50)
-        only_japanese = request.form.get('only_japanese') == 'on'
-        keep_input = request.form.get('keep_input') == 'on'
+        max_views_input = request.form.get('max_views')
+        max_views = int(max_views_input) if max_views_input else None
+        published_after = request.form.get('published_after', "")
+        max_results = int(request.form.get('max_results') or 25)
+        lang_filter = request.form.get('lang_filter') == "on"
+        keep_inputs = request.form.get('keep_inputs') == "on"
+        sort_method = request.form.get('sort_method', "")
 
         url = "https://www.googleapis.com/youtube/v3/search"
         params = {
             "key": YOUTUBE_API_KEY,
-            "q": " ".join(query_list),
+            "q": query,
             "part": "snippet",
-            "maxResults": min(50, max_results),
+            "maxResults": 50 if max_results > 50 else max_results,
             "type": "video",
             "order": "date",
-            "publishedAfter": published_after + "T00:00:00Z"
+            "publishedAfter": published_after + "T00:00:00Z" if published_after else "2024-01-01T00:00:00Z"
         }
 
         search_response = requests.get(url, params=params).json()
-
         for item in search_response.get("items", []):
             video_id = item["id"]["videoId"]
             title = item["snippet"]["title"]
             channel = item["snippet"]["channelTitle"]
-            publish_date = item["snippet"]["publishedAt"]
             channel_id = item["snippet"]["channelId"]
-            if exclude_words and any(ex in title for ex in exclude_words):
-                continue
+            publish_date = item["snippet"]["publishedAt"]
+            description = item["snippet"]["description"]
 
+            # チャンネル情報
+            channel_url = f"https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id={channel_id}&key={YOUTUBE_API_KEY}"
+            channel_response = requests.get(channel_url).json()
+            try:
+                subscriber_count = int(channel_response["items"][0]["statistics"].get("subscriberCount", 0))
+                channel_description = channel_response["items"][0]["snippet"].get("description", "")
+                country = channel_response["items"][0]["snippet"].get("country", "N/A")
+            except:
+                subscriber_count = 0
+                channel_description = ""
+                country = "N/A"
+
+            # 統計情報
             stats_url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics&id={video_id}&key={YOUTUBE_API_KEY}"
             stats_response = requests.get(stats_url).json()
             try:
                 view_count = int(stats_response["items"][0]["statistics"]["viewCount"])
-                if not (min_views <= view_count <= max_views):
-                    continue
             except:
                 continue
 
-            channel_details = get_channel_details(channel_id)
-            if only_japanese and not any('\u3040' <= c <= '\u30ff' for c in title):
+            # 除外ワードチェック
+            if any(word.lower() in title.lower() for word in exclude_words if word):
+                continue
+
+            # 言語フィルタ（日本以外除外）
+            if lang_filter and country not in ["JP", "日本"]:
+                continue
+
+            # 再生数フィルタ
+            if view_count < min_views:
+                continue
+            if max_views is not None and view_count > max_views:
                 continue
 
             videos.append({
                 "title": title,
                 "channel": channel,
+                "channel_description": channel_description,
+                "subscriber_count": subscriber_count,
                 "published": publish_date,
                 "views": view_count,
                 "url": f"https://www.youtube.com/watch?v={video_id}",
-                "thumbnail": item["snippet"]["thumbnails"]["medium"]["url"],
-                "channel_description": channel_details["description"],
-                "subscribers": channel_details["subscribers"]
+                "thumbnail": item["snippet"]["thumbnails"]["high"]["url"]
             })
 
-    return render_template("index.html", videos=videos, keep_input=keep_input, form=request.form)
+        # 並べ替え
+        if sort_method == "views_desc":
+            videos.sort(key=lambda x: x["views"], reverse=True)
+        elif sort_method == "views_asc":
+            videos.sort(key=lambda x: x["views"])
+        elif sort_method == "date":
+            videos.sort(key=lambda x: x["published"], reverse=True)
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    return render_template("index.html", videos=videos,
+                           query=query,
+                           exclude_words=exclude_words,
+                           min_views=min_views,
+                           max_views=max_views_input or "",
+                           published_after=published_after,
+                           max_results=max_results,
+                           lang_filter=lang_filter,
+                           keep_inputs=keep_inputs,
+                           sort_method=sort_method)

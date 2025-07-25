@@ -1,51 +1,36 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>YouTube動画検索</title>
+    <title>YouTube検索ツール</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 30px;
-        }
-        form {
-            margin-bottom: 20px;
-        }
-        .video {
-            margin-bottom: 20px;
-            display: flex;
-            align-items: flex-start;
-        }
-        .video img {
-            margin-right: 15px;
-        }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        form { margin-bottom: 30px; }
+        .video { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; }
+        img { max-width: 100%; height: auto; }
     </style>
 </head>
 <body>
     <h1>YouTube動画検索</h1>
-    <form method="POST">
+    <form method="post">
         <label>キーワード: <input type="text" name="query" required></label><br><br>
-        <label>最小再生数: <input type="number" name="min_views" placeholder="0"></label><br><br>
-        <label>最大再生数: <input type="number" name="max_views" placeholder="1000000000"></label><br><br>
-        <label>投稿日（例: 2024-01-01）: <input type="text" name="published_after" placeholder="2024-01-01"></label><br><br>
+        <label>最低再生数: <input type="number" name="min_views" placeholder="例: 1000"></label><br><br>
+        <label>最大再生数: <input type="number" name="max_views" placeholder="例: 1000000"></label><br><br>
+        <label>投稿日（YYYY-MM-DD以降）: <input type="date" name="published_after"></label><br><br>
         <button type="submit">検索</button>
     </form>
 
-    {% if videos %}
-    <h2>検索結果</h2>
     {% for video in videos %}
-        <div class="video">
-            <a href="{{ video.url }}" target="_blank">
-                <img src="{{ video.thumbnail }}" alt="thumbnail">
-            </a>
-            <div>
-                <p><a href="{{ video.url }}" target="_blank">{{ video.title }}</a></p>
-                <p>チャンネル名: {{ video.channel }}</p>
-                <p>投稿日: {{ video.published }}</p>
-                <p>再生数: {{ video.views }}</p>
-            </div>
-        </div>
+    <div class="video">
+        <a href="{{ video.url }}" target="_blank">
+            <img src="{{ video.thumbnail }}" alt="サムネイル" width="480" height="360">
+        </a>
+        <h3><a href="{{ video.url }}" target="_blank">{{ video.title }}</a></h3>
+        <p><strong>チャンネル:</strong> {{ video.channel }}</p>
+        <p><strong>登録者数:</strong> {{ video.subscribers }}</p>
+        <p><strong>チャンネル説明:</strong> {{ video.channel_description }}</p>
+        <p><strong>再生数:</strong> {{ video.views }}</p>
+        <p><strong>投稿日:</strong> {{ video.published }}</p>
+    </div>
     {% endfor %}
-    {% endif %}
 </body>
 </html>

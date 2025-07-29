@@ -1,46 +1,53 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="ja">
 <head>
-    <title>YouTube検索</title>
+    <meta charset="utf-8">
+    <title>YouTube 検索ツール</title>
 </head>
 <body>
-    <h1>YouTube動画検索</h1>
-    <form method="post">
-        キーワード: <input type="text" name="query" value="{{ query }}"><br>
-        除外1: <input type="text" name="exclude1" value="{{ exclude_words[0] }}">
-        除外2: <input type="text" name="exclude2" value="{{ exclude_words[1] }}">
-        除外3: <input type="text" name="exclude3" value="{{ exclude_words[2] }}"><br>
-        最小再生数: <input type="number" name="min_views" value="{{ min_views }}">
-        最大再生数: <input type="number" name="max_views" value="{{ max_views }}"><br>
-        投稿日(yyyy-mm-dd): <input type="date" name="published_after" value="{{ published_after }}"><br>
-        最大取得数: <input type="number" name="max_results" value="{{ max_results }}" min="1" max="50">
-        <button type="submit" name="max_results" value="50">最大取得</button><br>
-        日本の動画のみ: <input type="checkbox" name="lang_filter" {% if lang_filter %}checked{% endif %}><br>
-        入力値を保持: <input type="checkbox" name="keep_inputs" {% if keep_inputs %}checked{% endif %}><br>
-        並び順: 
-        <select name="sort_method">
-            <option value="">選択しない</option>
-            <option value="views_desc" {% if sort_method == "views_desc" %}selected{% endif %}>再生数多い順</option>
-            <option value="views_asc" {% if sort_method == "views_asc" %}selected{% endif %}>再生数少ない順</option>
-            <option value="date" {% if sort_method == "date" %}selected{% endif %}>新しい順</option>
-        </select><br>
+    <h1>YouTube 検索ツール</h1>
+    <form method="POST">
+        <label>キーワード1: <input type="text" name="query1" value="{{ query_words[0] }}"></label><br>
+        <label>キーワード2: <input type="text" name="query2" value="{{ query_words[1] }}"></label><br>
+        <label>キーワード3: <input type="text" name="query3" value="{{ query_words[2] }}"></label><br>
+        <label>検索条件: 
+            <input type="radio" name="query_mode" value="AND" {% if query_mode == 'AND' %}checked{% endif %}>AND
+            <input type="radio" name="query_mode" value="OR" {% if query_mode == 'OR' %}checked{% endif %}>OR
+        </label><br>
+        <label>除外ワード1: <input type="text" name="exclude1" value="{{ exclude_words[0] }}"></label><br>
+        <label>除外ワード2: <input type="text" name="exclude2" value="{{ exclude_words[1] }}"></label><br>
+        <label>除外ワード3: <input type="text" name="exclude3" value="{{ exclude_words[2] }}"></label><br>
+        <label>最小再生数: <input type="number" name="min_views" value="{{ min_views }}"></label><br>
+        <label>最大再生数: <input type="number" name="max_views" value="{{ max_views }}"></label><br>
+        <label>投稿日 (YYYY-MM-DD): <input type="date" name="published_after" value="{{ published_after }}"></label><br>
+        <label>取得件数（最大50）: <input type="number" name="max_results" min="1" max="50" value="{{ max_results }}"></label><br>
+        <label>並べ替え:
+            <select name="sort_order">
+                <option value="">-- 指定なし --</option>
+                <option value="views_desc" {% if sort_order == 'views_desc' %}selected{% endif %}>再生数多い順</option>
+                <option value="views_asc" {% if sort_order == 'views_asc' %}selected{% endif %}>再生数少ない順</option>
+                <option value="date_desc" {% if sort_order == 'date_desc' %}selected{% endif %}>新しい順</option>
+            </select>
+        </label><br>
+        <label>入力内容を保持:
+            <input type="checkbox" name="keep_input" {% if keep_input %}checked{% endif %}>
+        </label><br>
         <input type="submit" value="検索">
     </form>
 
-    {% if videos %}
-        <h2>検索結果（{{ videos|length }}件）</h2>
-        <ul>
-        {% for video in videos %}
-            <li style="margin-bottom:20px;">
-                <img src="{{ video.thumbnail }}" alt="サムネイル" width="320"><br>
-                <a href="{{ video.url }}" target="_blank">{{ video.title }}</a><br>
-                チャンネル: {{ video.channel }}（登録者数: {{ video.subscriber_count }}人）<br>
-                プロフィール: {{ video.channel_description|truncate(100) }}<br>
-                投稿日: {{ video.published }}<br>
-                再生数: {{ video.views }}回
-            </li>
-        {% endfor %}
-        </ul>
-    {% endif %}
+    <h2>検索結果</h2>
+    {% for video in videos %}
+        <div style="border: 1px solid #ccc; padding: 10px; margin: 10px;">
+            <a href="{{ video.url }}" target="_blank">
+                <img src="{{ video.thumbnail }}" alt="thumbnail" width="320">
+            </a><br>
+            <strong>{{ video.title }}</strong><br>
+            チャンネル: {{ video.channel }}<br>
+            登録者数: {{ video.subscriber_count }}<br>
+            チャンネル説明: {{ video.channel_description }}<br>
+            投稿日: {{ video.published }}<br>
+            再生数: {{ video.views }}<br>
+        </div>
+    {% endfor %}
 </body>
 </html>

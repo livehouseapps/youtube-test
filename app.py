@@ -1,103 +1,151 @@
 from flask import Flask, render_template, request
+import isodate
 import requests
 import os
-from datetime import datetime
+import re
 
 app = Flask(__name__)
 
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 
-@app.route('/', methods=['GET', 'POST'])
+YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
+YOUTUBE_VIDEO_DETAILS_URL = "https://www.googleapis.com/youtube/v3/videos"
+YOUTUBE_CHANNEL_DETAILS_URL = "https://www.googleapis.com/youtube/v3/channels"
+
+
+@app.route("/", methods=["GET", "POST"])
 def index():
     videos = []
-    query_words = ["", "", ""]
+    search_words = ["", "", ""]
     exclude_words = ["", "", ""]
-    search_mode = "OR"
-    min_views = None
-    max_views = None
-    published_after = ""
-    max_results = 50
-    keep_input = False
-    sort_order = "none"
+    min_views = ""
+    max_views = ""
+    sort_option = ""
+    search_type = "video"
+    search_limit = 50
+    include_social = False
 
-    if request.method == 'POST':
-        query_words = [request.form.get(f'query{i}', '') for i in range(1, 4)]
-        exclude_words = [request.form.get(f'exclude{i}', '') for i in range(1, 4)]
-        search_mode = request.form.get('search_mode', 'OR')
-        min_views = request.form.get('min_views')
-        max_views = request.form.get('max_views')
-        published_after = request.form.get('published_after')
-        max_results = int(request.form.get('max_results') or 50)
-        keep_input = request.form.get('keep_input') == 'on'
-        sort_order = request.form.get('sort_order', 'none')
+    if request.method == "POST":
+        search_words = [request.form.get(f"keyword{i+1}", "") for i in range(3)]
+        exclude_words = [request.form.get(f"exclude{i+1}", "") for i in range(3)]
+        min_views = request.form.get("min_views", "")
+        max_views = request.form.get("max_views", "")
+        sort_option = request.form.get("sort", "")
+        search_type = request.form.get("search_type", "video")
+        search_limit = int(request.form.get("search_limit", 50))
+        include_social = request.form.get("include_social") == "on"
 
-        include_query = f" {search_mode} ".join([q for q in query_words if q])
-        exclude_query = " ".join([f"-{w}" for w in exclude_words if w])
-        full_query = (include_query + " " + exclude_query).strip()
+        query = " ".join([w for w in search_words if w.strip()])
 
-        url = "https://www.googleapis.com/youtube/v3/search"
         params = {
             "key": YOUTUBE_API_KEY,
-            "q": full_query,
             "part": "snippet",
-            "maxResults": min(max_results, 50),
-            "type": "video",
-            "order": "date",
-            "publishedAfter": published_after + "T00:00:00Z" if published_after else "2024-01-01T00:00:00Z"
+            "q": query,
+            "type": search_type,
+            "maxResults": 50,
         }
 
-        search_response = requests.get(url, params=params).json()
+        all_video_ids = []
+        all_channel_ids = set()
+        next_page_token = None
+        fetched = 0
 
-        for item in search_response.get("items", []):
-            video_id = item["id"]["videoId"]
-            title = item["snippet"]["title"]
-            channel_id = item["snippet"]["channelId"]
-            channel = item["snippet"]["channelTitle"]
-            publish_date = item["snippet"]["publishedAt"]
-            thumbnail_url = item["snippet"]["thumbnails"]["medium"]["url"]
+        while fetched < search_limit:
+            if next_page_token:
+                params["pageToken"] = next_page_token
 
-            stats_url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics&id={video_id}&key={YOUTUBE_API_KEY}"
-            stats_response = requests.get(stats_url).json()
+            response = requests.get(YOUTUBE_SEARCH_URL, params=params)
+            items = response.json().get("items", [])
 
-            channel_url = f"https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id={channel_id}&key={YOUTUBE_API_KEY}"
-            channel_response = requests.get(channel_url).json()
+            for item in items:
+                if search_type == "video":
+                    all_video_ids.append(item["id"]["videoId"])
+                elif search_type == "channel":
+                    all_channel_ids.add(item["id"]["channelId"])
+                fetched += 1
+                if fetched >= search_limit:
+                    break
 
-            try:
-                view_count = int(stats_response["items"][0]["statistics"]["viewCount"])
-                subscribers = int(channel_response["items"][0]["statistics"].get("subscriberCount", 0))
-                description = channel_response["items"][0]["snippet"].get("description", "")
+            next_page_token = response.json().get("nextPageToken")
+            if not next_page_token:
+                break
 
-                if (not min_views or view_count >= int(min_views)) and (not max_views or view_count <= int(max_views)):
-                    videos.append({
-                        "title": title,
-                        "channel": channel,
-                        "channel_description": description,
-                        "subscribers": subscribers,
-                        "published": publish_date,
-                        "views": view_count,
-                        "thumbnail": thumbnail_url,
-                        "url": f"https://www.youtube.com/watch?v={video_id}"
-                    })
-            except:
-                continue
+        if search_type == "video" and all_video_ids:
+            video_params = {
+                "key": YOUTUBE_API_KEY,
+                "part": "snippet,statistics",
+                "id": ",".join(all_video_ids),
+            }
+            video_response = requests.get(YOUTUBE_VIDEO_DETAILS_URL, params=video_params)
+            video_items = video_response.json().get("items", [])
 
-        if sort_order == "views_desc":
-            videos.sort(key=lambda x: x['views'], reverse=True)
-        elif sort_order == "views_asc":
-            videos.sort(key=lambda x: x['views'])
-        elif sort_order == "date":
-            videos.sort(key=lambda x: datetime.strptime(x['published'], "%Y-%m-%dT%H:%M:%SZ"), reverse=True)
+            for item in video_items:
+                snippet = item["snippet"]
+                statistics = item.get("statistics", {})
+                view_count = int(statistics.get("viewCount", 0))
+                title = snippet["title"]
 
-    return render_template("index.html", videos=videos,
-                           query_words=query_words,
+                if any(w.lower() in title.lower() for w in exclude_words if w):
+                    continue
+
+                if min_views and view_count < int(min_views):
+                    continue
+                if max_views and view_count > int(max_views):
+                    continue
+
+                channel_id = snippet["channelId"]
+                all_channel_ids.add(channel_id)
+
+                videos.append({
+                    "title": title,
+                    "video_id": item["id"],
+                    "thumbnail": snippet["thumbnails"]["medium"]["url"],
+                    "view_count": view_count,
+                    "channel_id": channel_id,
+                })
+
+        channel_profiles = {}
+        if all_channel_ids:
+            channel_params = {
+                "key": YOUTUBE_API_KEY,
+                "part": "snippet,statistics",
+                "id": ",".join(all_channel_ids),
+            }
+            channel_response = requests.get(YOUTUBE_CHANNEL_DETAILS_URL, params=channel_params)
+            for item in channel_response.json().get("items", []):
+                cid = item["id"]
+                description = item["snippet"].get("description", "")
+                subscribers = item["statistics"].get("subscriberCount", "0")
+
+                if include_social and not ("@" in description or re.search(r"https?://|\.com|\.jp", description)):
+                    continue
+
+                channel_profiles[cid] = {
+                    "description": description,
+                    "subscribers": int(subscribers),
+                }
+
+        for v in videos:
+            profile = channel_profiles.get(v["channel_id"], {})
+            v["channel_description"] = profile.get("description", "")
+            v["subscribers"] = profile.get("subscribers", 0)
+
+        if sort_option == "views_desc":
+            videos.sort(key=lambda x: x["view_count"], reverse=True)
+        elif sort_option == "views_asc":
+            videos.sort(key=lambda x: x["view_count"])
+        elif sort_option == "newest":
+            pass  # Not implemented
+
+    return render_template("index.html", videos=videos, 
+                           search_words=search_words, 
                            exclude_words=exclude_words,
-                           search_mode=search_mode,
-                           min_views=min_views or "",
-                           max_views=max_views or "",
-                           published_after=published_after,
-                           max_results=max_results,
-                           keep_input=keep_input,
-                           sort_order=sort_order)
+                           min_views=min_views, max_views=max_views,
+                           sort_option=sort_option, 
+                           search_type=search_type,
+                           search_limit=search_limit,
+                           include_social=include_social)
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+
+if __name__ == "__main__":
+    app.run(debug=True)

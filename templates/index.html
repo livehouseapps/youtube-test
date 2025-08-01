@@ -1,151 +1,59 @@
-from flask import Flask, render_template, request
-import isodate
-import requests
-import os
-import re
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>YouTube 検索ツール</title>
+</head>
+<body>
+  <h1>YouTube 検索ツール</h1>
+  <form method="post">
+    <h3>検索キーワード（AND）</h3>
+    <input name="keyword1" placeholder="キーワード1" value="{{ search_words[0] }}">
+    <input name="keyword2" placeholder="キーワード2" value="{{ search_words[1] }}">
+    <input name="keyword3" placeholder="キーワード3" value="{{ search_words[2] }}">
 
-app = Flask(__name__)
+    <h3>除外キーワード</h3>
+    <input name="exclude1" placeholder="除外1" value="{{ exclude_words[0] }}">
+    <input name="exclude2" placeholder="除外2" value="{{ exclude_words[1] }}">
+    <input name="exclude3" placeholder="除外3" value="{{ exclude_words[2] }}">
 
-YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
+    <h3>視聴回数</h3>
+    最小: <input type="number" name="min_views" value="{{ min_views }}">
+    最大: <input type="number" name="max_views" value="{{ max_views }}">
 
-YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
-YOUTUBE_VIDEO_DETAILS_URL = "https://www.googleapis.com/youtube/v3/videos"
-YOUTUBE_CHANNEL_DETAILS_URL = "https://www.googleapis.com/youtube/v3/channels"
+    <h3>並び替え</h3>
+    <select name="sort">
+      <option value="">指定なし</option>
+      <option value="views_desc" {% if sort_option == "views_desc" %}selected{% endif %}>再生数多い順</option>
+      <option value="views_asc" {% if sort_option == "views_asc" %}selected{% endif %}>再生数少ない順</option>
+      <option value="newest" {% if sort_option == "newest" %}selected{% endif %}>新しい順</option>
+    </select>
 
+    <h3>検索タイプ</h3>
+    <label><input type="radio" name="search_type" value="video" {% if search_type == "video" %}checked{% endif %}> 動画</label>
+    <label><input type="radio" name="search_type" value="channel" {% if search_type == "channel" %}checked{% endif %}> チャンネル</label>
 
-@app.route("/", methods=["GET", "POST"])
-def index():
-    videos = []
-    search_words = ["", "", ""]
-    exclude_words = ["", "", ""]
-    min_views = ""
-    max_views = ""
-    sort_option = ""
-    search_type = "video"
-    search_limit = 50
-    include_social = False
+    <h3>検索件数</h3>
+    <input type="number" name="search_limit" value="{{ search_limit }}">
 
-    if request.method == "POST":
-        search_words = [request.form.get(f"keyword{i+1}", "") for i in range(3)]
-        exclude_words = [request.form.get(f"exclude{i+1}", "") for i in range(3)]
-        min_views = request.form.get("min_views", "")
-        max_views = request.form.get("max_views", "")
-        sort_option = request.form.get("sort", "")
-        search_type = request.form.get("search_type", "video")
-        search_limit = int(request.form.get("search_limit", 50))
-        include_social = request.form.get("include_social") == "on"
+    <h3>プロフィールにSNSリンク含むチャンネルのみ</h3>
+    <label><input type="checkbox" name="include_social" {% if include_social %}checked{% endif %}> 絞り込む</label>
 
-        query = " ".join([w for w in search_words if w.strip()])
+    <br><br>
+    <input type="submit" value="検索">
+  </form>
 
-        params = {
-            "key": YOUTUBE_API_KEY,
-            "part": "snippet",
-            "q": query,
-            "type": search_type,
-            "maxResults": 50,
-        }
-
-        all_video_ids = []
-        all_channel_ids = set()
-        next_page_token = None
-        fetched = 0
-
-        while fetched < search_limit:
-            if next_page_token:
-                params["pageToken"] = next_page_token
-
-            response = requests.get(YOUTUBE_SEARCH_URL, params=params)
-            items = response.json().get("items", [])
-
-            for item in items:
-                if search_type == "video":
-                    all_video_ids.append(item["id"]["videoId"])
-                elif search_type == "channel":
-                    all_channel_ids.add(item["id"]["channelId"])
-                fetched += 1
-                if fetched >= search_limit:
-                    break
-
-            next_page_token = response.json().get("nextPageToken")
-            if not next_page_token:
-                break
-
-        if search_type == "video" and all_video_ids:
-            video_params = {
-                "key": YOUTUBE_API_KEY,
-                "part": "snippet,statistics",
-                "id": ",".join(all_video_ids),
-            }
-            video_response = requests.get(YOUTUBE_VIDEO_DETAILS_URL, params=video_params)
-            video_items = video_response.json().get("items", [])
-
-            for item in video_items:
-                snippet = item["snippet"]
-                statistics = item.get("statistics", {})
-                view_count = int(statistics.get("viewCount", 0))
-                title = snippet["title"]
-
-                if any(w.lower() in title.lower() for w in exclude_words if w):
-                    continue
-
-                if min_views and view_count < int(min_views):
-                    continue
-                if max_views and view_count > int(max_views):
-                    continue
-
-                channel_id = snippet["channelId"]
-                all_channel_ids.add(channel_id)
-
-                videos.append({
-                    "title": title,
-                    "video_id": item["id"],
-                    "thumbnail": snippet["thumbnails"]["medium"]["url"],
-                    "view_count": view_count,
-                    "channel_id": channel_id,
-                })
-
-        channel_profiles = {}
-        if all_channel_ids:
-            channel_params = {
-                "key": YOUTUBE_API_KEY,
-                "part": "snippet,statistics",
-                "id": ",".join(all_channel_ids),
-            }
-            channel_response = requests.get(YOUTUBE_CHANNEL_DETAILS_URL, params=channel_params)
-            for item in channel_response.json().get("items", []):
-                cid = item["id"]
-                description = item["snippet"].get("description", "")
-                subscribers = item["statistics"].get("subscriberCount", "0")
-
-                if include_social and not ("@" in description or re.search(r"https?://|\.com|\.jp", description)):
-                    continue
-
-                channel_profiles[cid] = {
-                    "description": description,
-                    "subscribers": int(subscribers),
-                }
-
-        for v in videos:
-            profile = channel_profiles.get(v["channel_id"], {})
-            v["channel_description"] = profile.get("description", "")
-            v["subscribers"] = profile.get("subscribers", 0)
-
-        if sort_option == "views_desc":
-            videos.sort(key=lambda x: x["view_count"], reverse=True)
-        elif sort_option == "views_asc":
-            videos.sort(key=lambda x: x["view_count"])
-        elif sort_option == "newest":
-            pass  # Not implemented
-
-    return render_template("index.html", videos=videos, 
-                           search_words=search_words, 
-                           exclude_words=exclude_words,
-                           min_views=min_views, max_views=max_views,
-                           sort_option=sort_option, 
-                           search_type=search_type,
-                           search_limit=search_limit,
-                           include_social=include_social)
-
-
-if __name__ == "__main__":
-    app.run(debug=True)
+  <hr>
+  <h2>検索結果</h2>
+  {% for v in videos %}
+    <div style="margin-bottom: 20px;">
+      <img src="{{ v.thumbnail }}" alt="thumbnail">
+      <p><strong>{{ v.title }}</strong></p>
+      <p>再生数: {{ v.view_count }} / 登録者数: {{ v.subscribers }}</p>
+      <p>{{ v.channel_description }}</p>
+      <a href="https://www.youtube.com/watch?v={{ v.video_id }}" target="_blank">動画を開く</a>
+    </div>
+    <hr>
+  {% endfor %}
+</body>
+</html>
